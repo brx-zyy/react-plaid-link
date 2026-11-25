@@ -15,7 +15,7 @@ const makeHandler = (): MockHandler => ({
   destroy: jest.fn(),
 });
 
-describe('factory lifecycle isolation regressions', () => {
+describe('factory lifecycle regression coverage', () => {
   const originalPlaid = window.Plaid;
 
   beforeEach(() => {
@@ -37,14 +37,14 @@ describe('factory lifecycle isolation regressions', () => {
       ...overrides,
     }) as PlaidLinkOptions;
 
-  it('maps the legacy publicKey option to key without changing the caller object', () => {
+  it('maps publicKey to key without mutating the caller options', () => {
     const config = makeConfig({
       publicKey: 'public-test-key',
       env: 'sandbox',
     } as Partial<PlaidLinkOptions>);
     const original = { ...config };
     const handler = makeHandler();
-    const creator = jest.fn(() => handler);
+    const creator = jest.fn(() => handler as any);
 
     const instance = createPlaid(config, creator);
 
@@ -57,32 +57,43 @@ describe('factory lifecycle isolation regressions', () => {
     instance.destroy();
   });
 
-  it('keeps open/exit state and callbacks isolated between instances', () => {
+  it('keeps open state and exit callbacks isolated between instances', () => {
     const firstHandler = makeHandler();
     const secondHandler = makeHandler();
     const firstExit = jest.fn();
     const secondExit = jest.fn();
+    let firstSdkConfig: any;
+    let secondSdkConfig: any;
 
-    const first = createPlaid(makeConfig(), () => firstHandler as any);
-    const second = createPlaid(makeConfig(), () => secondHandler as any);
+    const first = createPlaid(makeConfig(), config => {
+      firstSdkConfig = config;
+      return firstHandler as any;
+    });
+    const second = createPlaid(makeConfig(), config => {
+      secondSdkConfig = config;
+      return secondHandler as any;
+    });
 
     first.open();
     first.exit(undefined, firstExit);
-
     expect(firstHandler.open).toHaveBeenCalledTimes(1);
     expect(firstHandler.exit).toHaveBeenCalledTimes(1);
     expect(secondHandler.open).not.toHaveBeenCalled();
     expect(secondHandler.exit).not.toHaveBeenCalled();
-    expect(firstExit).not.toHaveBeenCalled();
-
-    // The SDK signals completion asynchronously through onExit.
-    const firstConfig = (firstHandler as any).__config;
-    void firstConfig;
 
     second.open();
     second.exit(undefined, secondExit);
     expect(secondHandler.open).toHaveBeenCalledTimes(1);
     expect(secondHandler.exit).toHaveBeenCalledTimes(1);
+
+    firstSdkConfig.onExit(null, {});
+    expect(firstExit).toHaveBeenCalledTimes(1);
+    expect(secondExit).not.toHaveBeenCalled();
+
+    secondSdkConfig.onExit(null, {});
+    expect(secondExit).toHaveBeenCalledTimes(1);
+    first.destroy();
+    second.destroy();
   });
 
   it('destroys a handler at most once and makes subsequent operations safe', () => {
@@ -111,20 +122,17 @@ describe('factory lifecycle isolation regressions', () => {
     instance.destroy();
   });
 
-  it('forwards successful token and metadata to the configured callback', () => {
+  it('forwards the success token and metadata to the configured callback', () => {
     const handler = makeHandler();
     const onSuccess = jest.fn();
-    const instance = createPlaid(
-      makeConfig({ onSuccess }),
-      config => {
-        // Capture the wrapped SDK callback for deterministic testing.
-        (handler as any).config = config;
-        return handler as any;
-      }
-    );
+    let sdkConfig: any;
+    const instance = createPlaid(makeConfig({ onSuccess }), config => {
+      sdkConfig = config;
+      return handler as any;
+    });
     const metadata = { institution: { name: 'Test Bank' } };
 
-    (handler as any).config.onSuccess('public-sandbox-token', metadata);
+    sdkConfig.onSuccess('public-sandbox-token', metadata);
 
     expect(onSuccess).toHaveBeenCalledTimes(1);
     expect(onSuccess).toHaveBeenCalledWith('public-sandbox-token', metadata);
