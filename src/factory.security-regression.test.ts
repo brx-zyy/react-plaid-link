@@ -30,7 +30,7 @@ describe('factory lifecycle regression coverage', () => {
     jest.clearAllMocks();
   });
 
-  const makeConfig = (overrides: Partial<PlaidLinkOptions> = {}) =>
+  const makeConfig = (overrides: any = {}) =>
     ({
       token: 'link-sandbox-test-token',
       onSuccess: jest.fn(),
@@ -41,10 +41,10 @@ describe('factory lifecycle regression coverage', () => {
     const config = makeConfig({
       publicKey: 'public-test-key',
       env: 'sandbox',
-    } as Partial<PlaidLinkOptions>);
+    });
     const original = { ...config };
     const handler = makeHandler();
-    const creator = jest.fn(() => handler as any);
+    const creator = jest.fn((_options: PlaidLinkOptions) => handler as any);
 
     const instance = createPlaid(config, creator);
 
