@@ -353,4 +353,25 @@ describe('useScript', () => {
         expect(Object.keys(scripts).length).toBe(0);
         expect(scripts[testSrc]).toBeUndefined();
     });
+
+    it('should remain loading when an existing script has not fired its load event', () => {
+        const testSrc = 'http://scriptsrc/already-in-dom-but-pending';
+        const pendingScript = document.createElement('script');
+        pendingScript.src = testSrc;
+        document.body.appendChild(pendingScript);
+
+        const { result } = renderHook(() =>
+            useScript({ src: testSrc, checkForExisting: true }),
+        );
+
+        // A DOM node is not proof that the browser finished loading it.
+        expect(result.current).toStrictEqual([true, null]);
+
+        act(() => {
+            pendingScript.dispatchEvent(new Event('load'));
+        });
+
+        expect(result.current).toStrictEqual([false, null]);
+    });
+
 });
